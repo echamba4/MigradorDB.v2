@@ -22,3 +22,19 @@ Eso instala dependencias (una sola vez) y abre **NexoraDB Studio**.
 - App (API+UI): `127.0.0.1:3010`
 
 Si esos puertos están ocupados, cierra el proceso que los use.
+
+## Endpoints nuevos del Engine (v0.2+)
+
+- `POST /monitor/dashboard`: resumen agregado para múltiples conexiones (ideal para dashboard moderno).
+- `POST /data/export`: asistente backend para exportar tablas en `excel`, `csv`, `txt`, `xml`, `json`, `mdb`, `accdb`, `sql`.
+- `POST /data/import`: asistente backend para importar desde `excel`, `csv`, `txt`, `xml`, `json`, `mdb`, `accdb`.
+
+> Nota: para Access (`.mdb/.accdb`) necesitas un driver ODBC de Microsoft Access disponible en el sistema.
+
+## App de prueba incluida (web)
+
+- Abre `http://127.0.0.1:8001/` para usar una app web integrada con:
+  - Registro/test de conexiones.
+  - Dashboard agregado de múltiples bases.
+  - Asistente de exportación/importación.
+  - Backup rápido.

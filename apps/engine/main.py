@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import threading
@@ -7,6 +9,10 @@ import os
 import shutil
 import subprocess
 import time
+import csv
+import json
+from xml.etree.ElementTree import Element, SubElement, tostring
+from xml.dom import minidom
 
 import psycopg2
 import pyodbc
@@ -32,9 +38,27 @@ try:
 except Exception:  # pragma: no cover
     oracledb = None
 
+try:
+    import pandas as pd
+except Exception:  # pragma: no cover
+    pd = None
+
 app = FastAPI(title="NexoraDB Migration Engine", version="0.2.0")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 migraciones_activas: Dict[str, Dict[str, Any]] = {}
+
+
+@app.get("/")
+def home():
+    index_file = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return {"app": "NexoraDB Migration Engine", "docs": "/docs"}
 
 # -----------------------------
 # Modelos
@@ -82,6 +106,69 @@ class BackupRequest(BaseModel):
 class RestoreRequest(BaseModel):
     conexion: ConexionConfig
     input_path: str
+
+
+class DashboardSummaryRequest(BaseModel):
+    conexiones: List[ConexionConfig]
+
+
+class DataFlowRequest(BaseModel):
+    conexion: ConexionConfig
+    table: str
+    schema_name: str = Field("public", alias="schema")
+    output_path: str
+    formato: str = Field(
+        ...,
+        description="excel|csv|txt|xml|json|mdb|accdb|sql",
+    )
+    delimiter: str = ","
+    where_clause: Optional[str] = None
+
+
+class DataImportRequest(BaseModel):
+    conexion: ConexionConfig
+    table: str
+    schema_name: str = Field("public", alias="schema")
+    input_path: str
+    formato: str = Field(
+        ...,
+        description="excel|csv|txt|xml|json|mdb|accdb",
+    )
+    delimiter: str = ","
+    create_table_if_not_exists: bool = True
+
+
+@app.get("/meta/formats")
+def formatos_disponibles():
+    return {
+        "export": ["excel", "csv", "txt", "xml", "json", "mdb", "accdb", "sql"],
+        "import": ["excel", "csv", "txt", "xml", "json", "mdb", "accdb"],
+        "backup": ["sql", "bak", "dump", "archivo sqlite", "mongodump"],
+    }
+
+
+@app.post("/connection/test")
+def connection_test(cfg: ConexionConfig):
+    m = cfg.motor.lower()
+    try:
+        if m == "mongodb":
+            c = conn_mongodb(cfg)
+            c.admin.command("ping")
+            c.close()
+        else:
+            c = _connect_any(cfg)
+            try:
+                cur = c.cursor()
+                if m == "oracle":
+                    cur.execute("SELECT 1 FROM dual")
+                else:
+                    cur.execute("SELECT 1")
+                cur.fetchone()
+            finally:
+                c.close()
+        return {"ok": True, "motor": cfg.motor, "database": cfg.database}
+    except Exception as e:
+        raise HTTPException(400, f"No se pudo conectar: {e}")
 
 
 # -----------------------------
@@ -966,6 +1053,186 @@ def monitor_summary(cfg: ConexionConfig):
     raise HTTPException(400, "Motor no soportado")
 
 
+@app.post("/monitor/dashboard")
+def monitor_dashboard(req: DashboardSummaryRequest):
+    detalles = []
+    totales = {
+        "connections": 0,
+        "size_bytes": 0,
+        "tables": 0,
+        "views": 0,
+        "active_sessions": 0,
+        "with_errors": 0,
+    }
+
+    for cfg in req.conexiones:
+        totales["connections"] += 1
+        try:
+            info = monitor_summary(cfg)
+            detalles.append(
+                {
+                    "db": info.get("db"),
+                    "motor": cfg.motor,
+                    "size_bytes": int(info.get("size_bytes") or 0),
+                    "tables": int(info.get("tables") or 0),
+                    "views": int(info.get("views") or 0),
+                    "sessions": info.get("sessions"),
+                }
+            )
+            totales["size_bytes"] += int(info.get("size_bytes") or 0)
+            totales["tables"] += int(info.get("tables") or 0)
+            totales["views"] += int(info.get("views") or 0)
+            if info.get("sessions") is not None:
+                totales["active_sessions"] += int(info.get("sessions") or 0)
+        except Exception as e:
+            totales["with_errors"] += 1
+            detalles.append({"db": cfg.database, "motor": cfg.motor, "error": str(e)})
+
+    return {"totals": totales, "databases": detalles}
+
+
+def _normalize_rows(rows):
+    out = []
+    for r in rows:
+        item = {}
+        for k, v in r.items():
+            if isinstance(v, (bytes, bytearray)):
+                item[k] = v.hex()
+            elif hasattr(v, "isoformat"):
+                item[k] = v.isoformat()
+            else:
+                item[k] = v
+        out.append(item)
+    return out
+
+
+def _fetch_table_rows(cfg: ConexionConfig, schema: str, table: str, where_clause: Optional[str], limit: int = 200000):
+    where = f" WHERE {where_clause} " if where_clause else ""
+    m = cfg.motor.lower()
+
+    if m == "postgres":
+        with conn_postgres(cfg) as cn:
+            with cn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM {quote_ident_pg(schema)}.{quote_ident_pg(table)}{where} LIMIT {int(limit)}"
+                )
+                cols = [d.name for d in cur.description]
+                rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+                return _normalize_rows(rows)
+
+    if m == "sqlserver":
+        cn = conn_sqlserver(cfg)
+        cur = cn.cursor()
+        cur.execute(f"SELECT TOP {int(limit)} * FROM [{schema}].[{table}]{where}")
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        cn.close()
+        return _normalize_rows(rows)
+
+    if m == "mysql":
+        cn = conn_mysql(cfg)
+        try:
+            with cn.cursor() as cur:
+                cur.execute(f"SELECT * FROM `{schema}`.`{table}`{where} LIMIT {int(limit)}")
+                return _normalize_rows(cur.fetchall())
+        finally:
+            cn.close()
+
+    if m == "sqlite":
+        cn = conn_sqlite(cfg)
+        cur = cn.cursor()
+        cur.execute(f"SELECT * FROM '{table}'{where} LIMIT {int(limit)}")
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        cn.close()
+        return _normalize_rows(rows)
+
+    if m == "mongodb":
+        client = conn_mongodb(cfg)
+        db = client[cfg.database]
+        docs = list(db[table].find({}, limit=int(limit)))
+        client.close()
+        return _normalize_rows(docs)
+
+    raise HTTPException(400, f"Motor no soportado para exportación: {cfg.motor}")
+
+
+@app.post("/data/export")
+def data_export(req: DataFlowRequest):
+    formato = req.formato.lower().strip(".")
+    rows = _fetch_table_rows(req.conexion, req.schema_name, req.table, req.where_clause)
+    os.makedirs(os.path.dirname(req.output_path) or ".", exist_ok=True)
+
+    if formato in ("csv", "txt"):
+        if rows:
+            cols = list(rows[0].keys())
+        else:
+            cols = []
+        delim = req.delimiter if formato == "csv" else (req.delimiter or "\t")
+        with open(req.output_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=cols, delimiter=delim)
+            if cols:
+                writer.writeheader()
+                writer.writerows(rows)
+        return {"ok": True, "format": formato, "rows": len(rows), "output": req.output_path}
+
+    if formato == "json":
+        with open(req.output_path, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False, indent=2, default=str)
+        return {"ok": True, "format": formato, "rows": len(rows), "output": req.output_path}
+
+    if formato == "xml":
+        root = Element("rows")
+        for row in rows:
+            row_node = SubElement(root, "row")
+            for k, v in row.items():
+                node = SubElement(row_node, str(k))
+                node.text = "" if v is None else str(v)
+        xml_text = minidom.parseString(tostring(root, encoding="utf-8")).toprettyxml(indent="  ")
+        with open(req.output_path, "w", encoding="utf-8") as f:
+            f.write(xml_text)
+        return {"ok": True, "format": formato, "rows": len(rows), "output": req.output_path}
+
+    if formato == "excel":
+        if pd is None:
+            raise HTTPException(400, "Para exportar Excel debes instalar pandas y openpyxl")
+        pd.DataFrame(rows).to_excel(req.output_path, index=False)
+        return {"ok": True, "format": formato, "rows": len(rows), "output": req.output_path}
+
+    if formato in ("mdb", "accdb"):
+        # Access export vía ODBC (requiere driver Access en Windows)
+        driver = os.getenv("ACCESS_ODBC_DRIVER", "Microsoft Access Driver (*.mdb, *.accdb)")
+        cols = list(rows[0].keys()) if rows else []
+        cn = pyodbc.connect(f"DRIVER={{{driver}}};DBQ={req.output_path};")
+        cur = cn.cursor()
+        if cols:
+            col_defs = ", ".join([f"[{c}] TEXT" for c in cols])
+            cur.execute(f"CREATE TABLE [{req.table}] ({col_defs})")
+            placeholders = ",".join(["?"] * len(cols))
+            ins = f"INSERT INTO [{req.table}] (" + ",".join([f"[{c}]" for c in cols]) + f") VALUES ({placeholders})"
+            for r in rows:
+                cur.execute(ins, [str(r.get(c)) if r.get(c) is not None else None for c in cols])
+        cn.commit()
+        cn.close()
+        return {"ok": True, "format": formato, "rows": len(rows), "output": req.output_path}
+
+    if formato == "sql":
+        cols = list(rows[0].keys()) if rows else []
+        with open(req.output_path, "w", encoding="utf-8") as f:
+            for r in rows:
+                values = []
+                for c in cols:
+                    v = r.get(c)
+                    if v is None:
+                        values.append("NULL")
+                    else:
+                        values.append("'" + str(v).replace("'", "''") + "'")
+                f.write(f"INSERT INTO {req.table} (" + ",".join(cols) + ") VALUES (" + ",".join(values) + ");\n")
+        return {"ok": True, "format": formato, "rows": len(rows), "output": req.output_path}
+
+    raise HTTPException(400, "Formato no soportado. Usa excel,csv,txt,xml,json,mdb,accdb,sql")
+
+
 # -----------------------------
 # Backup / Restore (por motor)
 # -----------------------------
@@ -1177,6 +1444,165 @@ def backup_restore(req: RestoreRequest):
         raise HTTPException(400, "Oracle restore requiere impdp; se deja como guía en este MVP")
 
     raise HTTPException(400, "Motor no soportado")
+
+
+def _create_table_if_needed(cfg: ConexionConfig, schema: str, table: str, sample: Dict[str, Any]):
+    if not sample:
+        return
+    cols = list(sample.keys())
+    m = cfg.motor.lower()
+
+    if m == "postgres":
+        with conn_postgres(cfg) as cn:
+            with cn.cursor() as cur:
+                col_sql = ", ".join([f"{quote_ident_pg(c)} text" for c in cols])
+                cur.execute(f"CREATE SCHEMA IF NOT EXISTS {quote_ident_pg(schema)}")
+                cur.execute(
+                    f"CREATE TABLE IF NOT EXISTS {quote_ident_pg(schema)}.{quote_ident_pg(table)} ({col_sql})"
+                )
+            cn.commit()
+        return
+
+    if m == "mysql":
+        cn = conn_mysql(cfg)
+        try:
+            with cn.cursor() as cur:
+                col_sql = ", ".join([f"`{c}` TEXT" for c in cols])
+                cur.execute(f"CREATE TABLE IF NOT EXISTS `{table}` ({col_sql})")
+            cn.commit()
+        finally:
+            cn.close()
+        return
+
+    if m == "sqlite":
+        cn = conn_sqlite(cfg)
+        cur = cn.cursor()
+        col_sql = ", ".join([f'"{c}" TEXT' for c in cols])
+        cur.execute(f'CREATE TABLE IF NOT EXISTS "{table}" ({col_sql})')
+        cn.commit()
+        cn.close()
+        return
+
+    if m == "sqlserver":
+        cn = conn_sqlserver(cfg)
+        cur = cn.cursor()
+        col_sql = ", ".join([f"[{c}] NVARCHAR(MAX)" for c in cols])
+        cur.execute(
+            f"IF OBJECT_ID('{schema}.{table}', 'U') IS NULL CREATE TABLE [{schema}].[{table}] ({col_sql})"
+        )
+        cn.commit()
+        cn.close()
+        return
+
+    raise HTTPException(400, f"Importación no soportada para motor: {cfg.motor}")
+
+
+def _insert_rows(cfg: ConexionConfig, schema: str, table: str, rows: List[Dict[str, Any]]):
+    if not rows:
+        return 0
+    cols = list(rows[0].keys())
+    m = cfg.motor.lower()
+
+    if m == "postgres":
+        with conn_postgres(cfg) as cn:
+            with cn.cursor() as cur:
+                ph = ",".join(["%s"] * len(cols))
+                col_list = ",".join([quote_ident_pg(c) for c in cols])
+                sql = f"INSERT INTO {quote_ident_pg(schema)}.{quote_ident_pg(table)} ({col_list}) VALUES ({ph})"
+                data = [tuple(r.get(c) for c in cols) for r in rows]
+                cur.executemany(sql, data)
+            cn.commit()
+        return len(rows)
+
+    if m == "mysql":
+        cn = conn_mysql(cfg)
+        try:
+            with cn.cursor() as cur:
+                ph = ",".join(["%s"] * len(cols))
+                col_list = ",".join([f"`{c}`" for c in cols])
+                sql = f"INSERT INTO `{table}` ({col_list}) VALUES ({ph})"
+                data = [tuple(r.get(c) for c in cols) for r in rows]
+                cur.executemany(sql, data)
+            cn.commit()
+            return len(rows)
+        finally:
+            cn.close()
+
+    if m == "sqlite":
+        cn = conn_sqlite(cfg)
+        cur = cn.cursor()
+        ph = ",".join(["?"] * len(cols))
+        col_list = ",".join([f'"{c}"' for c in cols])
+        sql = f'INSERT INTO "{table}" ({col_list}) VALUES ({ph})'
+        data = [tuple(r.get(c) for c in cols) for r in rows]
+        cur.executemany(sql, data)
+        cn.commit()
+        cn.close()
+        return len(rows)
+
+    if m == "sqlserver":
+        cn = conn_sqlserver(cfg)
+        cur = cn.cursor()
+        ph = ",".join(["?"] * len(cols))
+        col_list = ",".join([f"[{c}]" for c in cols])
+        sql = f"INSERT INTO [{schema}].[{table}] ({col_list}) VALUES ({ph})"
+        data = [tuple(r.get(c) for c in cols) for r in rows]
+        cur.executemany(sql, data)
+        cn.commit()
+        cn.close()
+        return len(rows)
+
+    raise HTTPException(400, f"Importación no soportada para motor: {cfg.motor}")
+
+
+@app.post("/data/import")
+def data_import(req: DataImportRequest):
+    formato = req.formato.lower().strip(".")
+    path = req.input_path
+    if not os.path.exists(path):
+        raise HTTPException(404, f"Archivo no encontrado: {path}")
+
+    rows: List[Dict[str, Any]] = []
+    if formato in ("csv", "txt"):
+        delim = req.delimiter if formato == "csv" else (req.delimiter or "\t")
+        with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+            reader = csv.DictReader(f, delimiter=delim)
+            rows = [dict(r) for r in reader]
+    elif formato == "json":
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                rows = [dict(r) for r in data]
+            else:
+                raise HTTPException(400, "JSON debe contener un arreglo de objetos")
+    elif formato == "xml":
+        from xml.etree import ElementTree as ET
+        tree = ET.parse(path)
+        root = tree.getroot()
+        for row_node in root.findall("row"):
+            item = {}
+            for col in row_node:
+                item[col.tag] = col.text
+            rows.append(item)
+    elif formato == "excel":
+        if pd is None:
+            raise HTTPException(400, "Para importar Excel debes instalar pandas y openpyxl")
+        rows = pd.read_excel(path).fillna("").to_dict(orient="records")
+    elif formato in ("mdb", "accdb"):
+        driver = os.getenv("ACCESS_ODBC_DRIVER", "Microsoft Access Driver (*.mdb, *.accdb)")
+        cn = pyodbc.connect(f"DRIVER={{{driver}}};DBQ={path};")
+        cur = cn.cursor()
+        cur.execute(f"SELECT * FROM [{req.table}]")
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        cn.close()
+    else:
+        raise HTTPException(400, "Formato no soportado. Usa excel,csv,txt,xml,json,mdb,accdb")
+
+    if req.create_table_if_not_exists and rows:
+        _create_table_if_needed(req.conexion, req.schema_name, req.table, rows[0])
+    inserted = _insert_rows(req.conexion, req.schema_name, req.table, rows)
+    return {"ok": True, "rows": inserted, "table": req.table, "format": formato}
 
 
 # -----------------------------
