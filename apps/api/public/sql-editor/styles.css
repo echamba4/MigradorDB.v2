@@ -1,0 +1,25 @@
+body {
+  margin: 0;
+  background: #0f172a;
+  color: white;
+  font-family: sans-serif;
+}
+
+.toolbar {
+  padding: 10px;
+  background: #1e293b;
+}
+
+#editor {
+  height: 300px;
+}
+
+#grid {
+  height: 400px;
+  width: 100%;
+}
+
+.result-info {
+  padding: 5px 10px;
+  background: #111827;
+}

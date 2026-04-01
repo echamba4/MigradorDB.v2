@@ -1,0 +1,14 @@
+services:
+  meta-db:
+    image: postgres:16
+    container_name: nexoradb_meta_db
+    environment:
+      POSTGRES_USER: nexora
+      POSTGRES_PASSWORD: nexora123
+      POSTGRES_DB: nexoradb_metadata
+    ports:
+      - "5433:5432"
+    volumes:
+      - nexoradb_meta:/var/lib/postgresql/data
+volumes:
+  nexoradb_meta:

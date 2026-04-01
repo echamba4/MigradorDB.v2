@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NexoraDB SQL Editor</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.noStyle.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-alpine-dark.css">
+</head>
+<body>
+
+<div class="toolbar">
+  <select id="connection"></select>
+  <select id="schema"></select>
+  <button onclick="execute()">Ejecutar</button>
+  <button onclick="explain()">Explicar</button>
+  <button onclick="exportCSV()">Exportar CSV</button>
+</div>
+
+<div id="editor"></div>
+
+<div class="result-info">
+  <span id="info"></span>
+</div>
+
+<div id="grid" class="ag-theme-alpine-dark"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
