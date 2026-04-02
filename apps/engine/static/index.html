@@ -3,90 +3,120 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NexoraDB Studio | Dashboard</title>
+  <title>NexoraDB Studio</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <h1>NexoraDB Studio</h1>
-    <span>Migration • Import/Export • Backup</span>
+  <header class="titlebar">
+    <div class="brand">🟡 NexoraDB Studio</div>
+    <div class="window-actions">— □ ✕</div>
   </header>
 
-  <main class="layout">
-    <section class="card">
-      <h2>1) Registrar conexión</h2>
-      <form id="connForm" class="grid">
-        <input name="name" placeholder="Alias (ej: Prod-Postgres)" required />
-        <select name="motor" required>
-          <option value="postgres">PostgreSQL</option>
-          <option value="sqlserver">SQL Server</option>
-          <option value="mysql">MySQL</option>
-          <option value="sqlite">SQLite</option>
-          <option value="mongodb">MongoDB</option>
-          <option value="oracle">Oracle</option>
-        </select>
-        <input name="host" placeholder="Host o ruta (sqlite)" required />
-        <input name="port" placeholder="Puerto" type="number" />
-        <input name="database" placeholder="Database" required />
-        <input name="user" placeholder="Usuario" />
-        <input name="password" placeholder="Password" type="password" />
-        <label class="check"><input type="checkbox" name="ssl" /> SSL</label>
-        <button>Agregar conexión</button>
-      </form>
-      <div id="connList" class="list"></div>
+  <nav class="menubar">
+    <span>Archivo</span><span>Editar</span><span>Ver</span><span>Favoritos</span>
+    <span>Herramientas</span><span>Ventanas</span><span>Ayuda</span>
+  </nav>
+
+  <section class="ribbon">
+    <button data-tab="objects">🗂 Tabla</button>
+    <button data-tab="dashboard">📊 Dashboard</button>
+    <button data-tab="import">📥 Asistente Importación</button>
+    <button data-tab="export">📤 Asistente Exportación</button>
+    <button data-tab="backup">🛡 Backup</button>
+  </section>
+
+  <main class="workspace">
+    <aside class="panel left">
+      <div class="panel-title">Conexiones</div>
+      <div id="connTree" class="tree"></div>
+
+      <details open class="conn-editor">
+        <summary>Nueva conexión</summary>
+        <form id="connForm" class="form compact">
+          <input name="name" placeholder="Alias" required />
+          <select name="motor" required>
+            <option value="postgres">PostgreSQL</option>
+            <option value="sqlserver">SQL Server</option>
+            <option value="mysql">MySQL</option>
+            <option value="sqlite">SQLite</option>
+            <option value="mongodb">MongoDB</option>
+            <option value="oracle">Oracle</option>
+          </select>
+          <input name="host" placeholder="Host o ruta sqlite" required />
+          <input name="port" placeholder="Puerto" type="number" />
+          <input name="database" placeholder="Base de datos" required />
+          <input name="user" placeholder="Usuario" />
+          <input name="password" type="password" placeholder="Password" />
+          <label class="check"><input type="checkbox" name="ssl" /> SSL</label>
+          <button>Conectar + Guardar</button>
+        </form>
+      </details>
+    </aside>
+
+    <section class="panel center">
+      <div class="panel-title" id="centerTitle">Objetos</div>
+
+      <div id="tab-objects" class="tab-content active">
+        <div class="toolbar-row">
+          <select id="schemaSelect"></select>
+          <button id="refreshObjects">Actualizar objetos</button>
+        </div>
+        <table class="grid-table">
+          <thead>
+            <tr><th>Nombre</th><th>Tipo</th><th>Detalle</th></tr>
+          </thead>
+          <tbody id="objectsBody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-dashboard" class="tab-content">
+        <div class="kpis" id="kpiCards"></div>
+        <pre id="dashboardRaw"></pre>
+      </div>
+
+      <div id="tab-import" class="tab-content">
+        <form id="importForm" class="form">
+          <input name="schema" placeholder="Schema" value="public" />
+          <input name="table" placeholder="Tabla destino" required />
+          <select name="format">
+            <option>excel</option><option>csv</option><option>txt</option>
+            <option>xml</option><option>json</option><option>mdb</option><option>accdb</option>
+          </select>
+          <input name="input" placeholder="Ruta input (ej. C:\\temp\\data.csv)" required />
+          <button>Importar</button>
+        </form>
+        <pre id="importResult"></pre>
+      </div>
+
+      <div id="tab-export" class="tab-content">
+        <form id="exportForm" class="form">
+          <input name="schema" placeholder="Schema" value="public" />
+          <input name="table" placeholder="Tabla / Colección" required />
+          <select name="format">
+            <option>excel</option><option>csv</option><option>txt</option>
+            <option>xml</option><option>json</option><option>mdb</option><option>accdb</option><option>sql</option>
+          </select>
+          <input name="output" placeholder="Ruta output (ej. C:\\temp\\export.csv)" required />
+          <input name="where" placeholder="WHERE opcional (sin WHERE)" />
+          <button>Exportar</button>
+        </form>
+        <pre id="exportResult"></pre>
+      </div>
+
+      <div id="tab-backup" class="tab-content">
+        <form id="backupForm" class="form">
+          <input name="output" placeholder="Ruta backup" required />
+          <select name="mode"><option>completo</option><option>estructura</option><option>datos</option></select>
+          <button>Crear backup</button>
+        </form>
+        <pre id="backupResult"></pre>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>2) Dashboard de estadísticas</h2>
-      <button id="loadStats">Actualizar dashboard</button>
-      <pre id="stats"></pre>
-    </section>
-
-    <section class="card">
-      <h2>3) Asistente de Exportación</h2>
-      <form id="exportForm" class="grid">
-        <select name="conn" required></select>
-        <input name="schema" placeholder="Schema" value="public" />
-        <input name="table" placeholder="Tabla / Colección" required />
-        <select name="format">
-          <option>excel</option><option>csv</option><option>txt</option>
-          <option>xml</option><option>json</option><option>mdb</option>
-          <option>accdb</option><option>sql</option>
-        </select>
-        <input name="output" placeholder="Salida: /tmp/export.csv" required />
-        <input name="where" placeholder="WHERE opcional (sin palabra WHERE)" />
-        <button>Exportar</button>
-      </form>
-      <pre id="exportResult"></pre>
-    </section>
-
-    <section class="card">
-      <h2>4) Asistente de Importación</h2>
-      <form id="importForm" class="grid">
-        <select name="conn" required></select>
-        <input name="schema" placeholder="Schema" value="public" />
-        <input name="table" placeholder="Tabla destino" required />
-        <select name="format">
-          <option>excel</option><option>csv</option><option>txt</option>
-          <option>xml</option><option>json</option><option>mdb</option>
-          <option>accdb</option>
-        </select>
-        <input name="input" placeholder="Entrada: /tmp/input.csv" required />
-        <button>Importar</button>
-      </form>
-      <pre id="importResult"></pre>
-    </section>
-
-    <section class="card">
-      <h2>5) Backup / Restore</h2>
-      <form id="backupForm" class="grid two">
-        <select name="conn" required></select>
-        <input name="output" placeholder="Backup output path" required />
-        <select name="mode"><option>completo</option><option>estructura</option><option>datos</option></select>
-        <button>Crear backup</button>
-      </form>
-      <pre id="backupResult"></pre>
-    </section>
+    <aside class="panel right">
+      <div class="panel-title">Perfil activo</div>
+      <div id="profileCard" class="profile muted">Sin conexión seleccionada.</div>
+    </aside>
   </main>
 
   <script src="/static/app.js"></script>
