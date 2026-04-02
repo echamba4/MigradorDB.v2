@@ -1009,65 +1009,70 @@ def run_query(payload: Dict[str, Any]):
     m = cfg.motor.lower()
     t0 = time.time()
 
-    if m == "postgres":
-        with conn_postgres(cfg) as cn:
-            with cn.cursor() as cur:
-                # paginado naive
-                paged = f"{sql} LIMIT {int(req.limit)} OFFSET {int((req.page-1)*req.limit)}"
-                cur.execute(paged)
-                cols = [d.name for d in cur.description]
-                rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
+    try:
+        if m == "postgres":
+            with conn_postgres(cfg) as cn:
+                with cn.cursor() as cur:
+                    # paginado naive
+                    paged = f"{sql} LIMIT {int(req.limit)} OFFSET {int((req.page-1)*req.limit)}"
+                    cur.execute(paged)
+                    cols = [d.name for d in cur.description]
+                    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
 
-    if m == "sqlserver":
-        cn = conn_sqlserver(cfg)
-        cur = cn.cursor()
-        # SQL Server OFFSET requires ORDER BY; si no hay, lo dejamos sin paginar
-        final_sql = sql
-        if "offset" not in sql.lower():
-            # best-effort: agregar OFFSET/FETCH si hay ORDER BY
-            if "order by" in sql.lower():
-                final_sql = f"{sql} OFFSET {int((req.page-1)*req.limit)} ROWS FETCH NEXT {int(req.limit)} ROWS ONLY"
-        cur.execute(final_sql)
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        cn.close()
-        return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
-
-    if m == "mysql":
-        cn = conn_mysql(cfg)
-        try:
-            with cn.cursor() as cur:
-                paged = f"{sql} LIMIT {int(req.limit)} OFFSET {int((req.page-1)*req.limit)}"
-                cur.execute(paged)
-                rows = cur.fetchall()
-                return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
-        finally:
+        if m == "sqlserver":
+            cn = conn_sqlserver(cfg)
+            cur = cn.cursor()
+            # SQL Server OFFSET requires ORDER BY; si no hay, lo dejamos sin paginar
+            final_sql = sql
+            if "offset" not in sql.lower():
+                # best-effort: agregar OFFSET/FETCH si hay ORDER BY
+                if "order by" in sql.lower():
+                    final_sql = f"{sql} OFFSET {int((req.page-1)*req.limit)} ROWS FETCH NEXT {int(req.limit)} ROWS ONLY"
+            cur.execute(final_sql)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
             cn.close()
+            return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
 
-    if m == "sqlite":
-        cn = conn_sqlite(cfg)
-        cur = cn.cursor()
-        paged = f"{sql} LIMIT {int(req.limit)} OFFSET {int((req.page-1)*req.limit)}"
-        cur.execute(paged)
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        cn.close()
-        return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
+        if m == "mysql":
+            cn = conn_mysql(cfg)
+            try:
+                with cn.cursor() as cur:
+                    paged = f"{sql} LIMIT {int(req.limit)} OFFSET {int((req.page-1)*req.limit)}"
+                    cur.execute(paged)
+                    rows = cur.fetchall()
+                    return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
+            finally:
+                cn.close()
 
-    if m == "mongodb":
-        raise HTTPException(400, "MongoDB no soporta SQL en este MVP")
+        if m == "sqlite":
+            cn = conn_sqlite(cfg)
+            cur = cn.cursor()
+            paged = f"{sql} LIMIT {int(req.limit)} OFFSET {int((req.page-1)*req.limit)}"
+            cur.execute(paged)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            cn.close()
+            return {"rows": rows, "page": req.page, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
 
-    if m == "oracle":
-        cn = conn_oracle(cfg)
-        cur = cn.cursor()
-        cur.execute(sql)
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchmany(req.limit)]
-        cn.close()
-        return {"rows": rows, "page": 1, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
+        if m == "mongodb":
+            raise HTTPException(400, "MongoDB no soporta SQL en este MVP")
 
-    raise HTTPException(400, "Motor no soportado")
+        if m == "oracle":
+            cn = conn_oracle(cfg)
+            cur = cn.cursor()
+            cur.execute(sql)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchmany(req.limit)]
+            cn.close()
+            return {"rows": rows, "page": 1, "limit": req.limit, "ms": int((time.time()-t0)*1000)}
+
+        raise HTTPException(400, "Motor no soportado")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Error ejecutando consulta: {e}")
 
 
 # -----------------------------

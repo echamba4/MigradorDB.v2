@@ -1,13 +1,13 @@
 const DB_TYPES = [
-  { key: 'postgres', label: 'PostgreSQL', port: 5432, db: 'postgres', user: 'postgres', icon: '🐘' },
-  { key: 'mysql', label: 'MySQL', port: 3306, db: 'mysql', user: 'root', icon: '🐬' },
-  { key: 'sqlserver', label: 'SQL Server', port: 1433, db: 'master', user: 'sa', icon: '🟦' },
-  { key: 'sqlite', label: 'SQLite', port: 0, db: 'database.db', user: '', icon: '🧩' },
-  { key: 'mongodb', label: 'MongoDB', port: 27017, db: 'admin', user: '', icon: '🍃' },
-  { key: 'oracle', label: 'Oracle', port: 1521, db: 'xe', user: 'system', icon: '🟥' },
+  { key: 'postgres', label: 'PostgreSQL', port: 5432, db: 'postgres', user: 'postgres', icon: 'PG' },
+  { key: 'mysql', label: 'MySQL', port: 3306, db: 'mysql', user: 'root', icon: 'MY' },
+  { key: 'sqlserver', label: 'SQL Server', port: 1433, db: 'master', user: 'sa', icon: 'MS' },
+  { key: 'sqlite', label: 'SQLite', port: 0, db: 'database.db', user: '', icon: 'SQ' },
+  { key: 'mongodb', label: 'MongoDB', port: 27017, db: 'admin', user: '', icon: 'MG' },
+  { key: 'oracle', label: 'Oracle', port: 1521, db: 'xe', user: 'system', icon: 'OR' },
 ];
 
-const state = { connections: [], selected: -1, activeTab: 'query', treeMeta: {}, dashboardTimer: null, metricsHistory: [] };
+const state = { connections: [], selected: -1, activeTab: 'query', treeMeta: {}, dashboardTimer: null, metricsHistory: [], supportsTableDetails: null };
 const $ = (id) => document.getElementById(id);
 const selectedConn = () => (state.selected >= 0 ? state.connections[state.selected] : null);
 
@@ -34,6 +34,19 @@ function showMiniModal(title, msg, autoCloseMs = 1800) {
   $('miniModalMsg').textContent = msg;
   $('miniModal').classList.remove('hidden');
   setTimeout(() => $('miniModal').classList.add('hidden'), autoCloseMs);
+}
+
+function persistConnections() {
+  try { localStorage.setItem('nexora.connections', JSON.stringify(state.connections)); } catch {}
+}
+
+function loadPersistedConnections() {
+  try {
+    const raw = localStorage.getItem('nexora.connections');
+    if (!raw) return;
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) state.connections = arr;
+  } catch {}
 }
 
 function switchTab(tab) {
@@ -129,28 +142,34 @@ function renderTree() {
     const active = idx === state.selected ? 'active' : '';
     const meta = state.treeMeta[idx];
     if (!meta || meta.error) {
-      return `<details ${active ? 'open' : ''}><summary class="conn-summary ${active}" data-select="${idx}">${dbIcon(c.motor)} ${c.name}</summary><div class="tree-node muted">${meta?.error || 'Cargando...'}</div></details>`;
+      return `<details><summary class="conn-summary ${active}" data-select="${idx}"><span class='icon-badge'>${dbIcon(c.motor)}</span> ${c.name}</summary><div class="tree-node muted">${meta?.error || 'Cargando...'}</div></details>`;
     }
 
     const dbNodes = meta.databases.map((db) => `<div class="tree-node">🛢 ${db}</div>`).join('');
     const schemaNodes = meta.schemas.map((s) => {
       const o = meta.objectsBySchema[s] || {};
-      const tableNodes = (o.tables || []).map((t) => `<details>
-          <summary class="leaf" data-select="${idx}" data-schema="${s}" data-table="${t}">📘 ${t}</summary>
-          <div class="child" data-detail="${idx}|${s}|${t}">Cargando detalle...</div>
+      const tableNodes = (o.tables || []).map((t) => `<details class=\"tbl-node\" data-idx=\"${idx}\" data-schema=\"${s}\" data-table=\"${t}\">
+          <summary class="leaf" data-select="${idx}" data-schema="${s}" data-table="${t}">▦ ${t}</summary>
+          <div class="child" data-detail="${idx}|${s}|${t}">
+            <details><summary>Campos</summary><div class='tree-node muted'>clic para cargar...</div></details>
+            <details><summary>Índices</summary><div class='tree-node muted'>clic para cargar...</div></details>
+            <details><summary>Clave Foráneas</summary><div class='tree-node muted'>clic para cargar...</div></details>
+            <details><summary>Restricciones</summary><div class='tree-node muted'>clic para cargar...</div></details>
+            <details><summary>Triggers</summary><div class='tree-node muted'>clic para cargar...</div></details>
+          </div>
       </details>`).join('') || '<div class="tree-node muted">(sin tablas)</div>';
-      const viewNodes = (o.views || []).map((v) => `<div class="leaf">👁 ${v}</div>`).join('') || '<div class="tree-node muted">(sin vistas)</div>';
+      const viewNodes = (o.views || []).map((v) => `<div class="leaf">▤ ${v}</div>`).join('') || '<div class="tree-node muted">(sin vistas)</div>';
       const fnNodes = (o.functions || []).map((f) => `<div class="leaf">ƒ ${typeof f === 'string' ? f : f.name}</div>`).join('') || '<div class="tree-node muted">(sin funciones)</div>';
-      return `<details open>
-          <summary>🧩 ${s}</summary>
-          <details open><summary>📚 Tablas</summary>${tableNodes}</details>
-          <details><summary>👁 Vistas</summary>${viewNodes}</details>
-          <details><summary>ƒ Funciones</summary>${fnNodes}</details>
-          <details><summary>🧾 Consultas</summary><button class="leaf" data-newquery="${idx}">Nueva consulta</button></details>
+      return `<details>
+          <summary>◫ ${s}</summary>
+          <details><summary>Tablas</summary>${tableNodes}</details>
+          <details><summary>Vistas</summary>${viewNodes}</details>
+          <details><summary>Funciones</summary>${fnNodes}</details>
+          <details><summary>Consultas</summary><button class="leaf" data-newquery="${idx}">Nueva consulta</button></details>
       </details>`;
     }).join('');
 
-    return `<details ${active ? 'open' : ''}><summary class="conn-summary ${active}" data-select="${idx}">${dbIcon(c.motor)} ${c.name}</summary>${dbNodes}${schemaNodes}</details>`;
+    return `<details><summary class="conn-summary ${active}" data-select="${idx}"><span class='icon-badge'>${dbIcon(c.motor)}</span> ${c.name}</summary>${dbNodes}${schemaNodes}</details>`;
   }).join('');
 
   root.querySelectorAll('[data-select]').forEach((el) => el.addEventListener('click', async () => {
@@ -164,16 +183,7 @@ function renderTree() {
       const table = el.dataset.table;
       $('sqlEditor').value = `select * from ${schema}.${table} limit 200;`;
       switchTab('query');
-      const slot = root.querySelector(`[data-detail="${idx}|${schema}|${table}"]`);
-      if (slot) {
-        const det = await ensureTableDetails(idx, schema, table);
-        slot.innerHTML = `
-          <details><summary>🧱 Campos</summary>${(det.columns || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class="tree-node muted">(vacío)</div>'}</details>
-          <details><summary>🔠 Índices</summary>${(det.indexes || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class="tree-node muted">(vacío)</div>'}</details>
-          <details><summary>🔗 Clave Foráneas</summary>${(det.foreign_keys || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class="tree-node muted">(vacío)</div>'}</details>
-          <details><summary>✅ Restricciones</summary>${(det.constraints || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class="tree-node muted">(vacío)</div>'}</details>
-          <details><summary>⚡ Triggers</summary>${(det.triggers || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class="tree-node muted">(vacío)</div>'}</details>`;
-      }
+      // solo arma query, no expandimos detalles automáticamente
     }
   }));
 
@@ -183,6 +193,23 @@ function renderTree() {
     $('sqlEditor').value = 'select * from nombre_tabla limit 200;';
     switchTab('query');
   });
+
+  root.querySelectorAll('.tbl-node').forEach((node) => node.addEventListener('toggle', async () => {
+    if (!node.open || node.dataset.loaded === '1') return;
+    const idx = Number(node.dataset.idx);
+    const schema = node.dataset.schema;
+    const table = node.dataset.table;
+    const slot = root.querySelector(`[data-detail=\"${idx}|${schema}|${table}\"]`);
+    const det = await ensureTableDetails(idx, schema, table);
+    if (!slot) return;
+    slot.innerHTML = `
+      <details><summary>Campos</summary>${(det.columns || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class=\"tree-node muted\">(vacío)</div>'}</details>
+      <details><summary>Índices</summary>${(det.indexes || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class=\"tree-node muted\">(vacío)</div>'}</details>
+      <details><summary>Clave Foráneas</summary>${(det.foreign_keys || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class=\"tree-node muted\">(vacío)</div>'}</details>
+      <details><summary>Restricciones</summary>${(det.constraints || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class=\"tree-node muted\">(vacío)</div>'}</details>
+      <details><summary>Triggers</summary>${(det.triggers || []).map((x) => `<div class='tree-node'>• ${x}</div>`).join('') || '<div class=\"tree-node muted\">(vacío)</div>'}</details>`;
+    node.dataset.loaded = '1';
+  }));
 }
 
 function renderProfile() {
@@ -310,7 +337,6 @@ $('testConnBtn').onclick = async () => {
   try {
     await api('/connection/test', connPayload(c));
     showMiniModal('Conexión Exitosa', 'La conexión se probó correctamente.');
-    closeModal('connModal');
   } catch (e) { showToast(`Error: ${e.message}`, false); }
 };
 
@@ -324,6 +350,7 @@ $('connForm').onsubmit = async (e) => {
     state.selected = state.connections.length - 1;
     closeModal('connModal');
     e.target.reset();
+    persistConnections();
     renderProfile();
     showToast('Conexión guardada', true);
     await loadMetaForConnection(state.selected);
@@ -355,7 +382,14 @@ $('backupForm').onsubmit = async (e) => {
   catch (e2) { $('backupResult').textContent = e2.message; }
 };
 
+loadPersistedConnections();
 renderTree();
 renderProfile();
 updateQueryLabel();
 switchTab('query');
+if (state.connections.length) {
+  state.selected = 0;
+  renderProfile();
+  updateQueryLabel();
+  state.connections.forEach((_, i) => loadMetaForConnection(i));
+}

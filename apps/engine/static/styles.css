@@ -31,6 +31,7 @@ body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: var(-
 .tree details { margin-bottom: 4px; }
 .conn-summary { cursor: pointer; padding: 4px 6px; border-radius: 4px; }
 .conn-summary.active { background: #303744; border-left: 3px solid var(--accent); }
+.icon-badge { display: inline-block; min-width: 22px; text-align: center; font-size: 11px; font-weight: 700; background: #2d3642; border: 1px solid #4c5766; border-radius: 4px; margin-right: 6px; }
 .tree-node { margin: 3px 0 3px 20px; color: #c9d0dc; }
 .leaf { display: block; margin: 3px 0 3px 20px; width: calc(100% - 22px); text-align: left; background: transparent; color: #d2d8e2; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; }
 .leaf:hover { background: #2d3541; border-color: #4d5664; cursor: pointer; }
