@@ -39,3 +39,12 @@ Si esos puertos están ocupados, cierra el proceso que los use.
   - Dashboard agregado de múltiples bases.
   - Asistente de exportación/importación.
   - Backup rápido.
+
+## Nota sobre `apps/api/dist/main.js`
+
+- Si te salía `Cannot find module ... apps/api/dist/main.js`, ya se incluye un gateway mínimo en `apps/api/dist/main.js`.
+- Puedes iniciarlo con:
+  - `cd apps/api`
+  - `npm start`
+- Health check: `http://127.0.0.1:3010/health`
+- Proxy al engine: `http://127.0.0.1:3010/engine/...`
