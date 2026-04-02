@@ -14,8 +14,20 @@ import json
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
 
-import psycopg2
-import pyodbc
+try:
+    import psycopg2
+except Exception:  # pragma: no cover
+    psycopg2 = None
+
+try:
+    import psycopg
+except Exception:  # pragma: no cover
+    psycopg = None
+
+try:
+    import pyodbc
+except Exception:  # pragma: no cover
+    pyodbc = None
 
 # Opcionales
 try:
@@ -177,17 +189,32 @@ def connection_test(cfg: ConexionConfig):
 
 def conn_postgres(c: ConexionConfig):
     sslmode = "require" if c.ssl else "disable"
-    return psycopg2.connect(
-        host=c.host,
-        port=c.port or 5432,
-        dbname=c.database,
-        user=c.user,
-        password=c.password,
-        sslmode=sslmode,
-    )
+    if psycopg2 is not None:
+        return psycopg2.connect(
+            host=c.host,
+            port=c.port or 5432,
+            dbname=c.database,
+            user=c.user,
+            password=c.password,
+            sslmode=sslmode,
+        )
+    if psycopg is not None:
+        return psycopg.connect(
+            host=c.host,
+            port=c.port or 5432,
+            dbname=c.database,
+            user=c.user,
+            password=c.password,
+            sslmode=sslmode,
+        )
+    raise RuntimeError("Instala un driver de PostgreSQL: pip install psycopg[binary]")
 
 
 def conn_sqlserver(c: ConexionConfig):
+    if pyodbc is None:
+        raise RuntimeError(
+            "pyodbc no está instalado. Instala ODBC Driver + pyodbc para habilitar SQL Server/Access."
+        )
     driver = os.getenv("SQLSERVER_ODBC_DRIVER", "ODBC Driver 17 for SQL Server")
     conn_str = (
         f"DRIVER={{{driver}}};SERVER={c.host},{c.port or 1433};DATABASE={c.database};UID={c.user};PWD={c.password};"
@@ -1201,6 +1228,8 @@ def data_export(req: DataFlowRequest):
 
     if formato in ("mdb", "accdb"):
         # Access export vía ODBC (requiere driver Access en Windows)
+        if pyodbc is None:
+            raise HTTPException(400, "pyodbc no instalado. No se puede exportar a Access.")
         driver = os.getenv("ACCESS_ODBC_DRIVER", "Microsoft Access Driver (*.mdb, *.accdb)")
         cols = list(rows[0].keys()) if rows else []
         cn = pyodbc.connect(f"DRIVER={{{driver}}};DBQ={req.output_path};")
@@ -1589,6 +1618,8 @@ def data_import(req: DataImportRequest):
             raise HTTPException(400, "Para importar Excel debes instalar pandas y openpyxl")
         rows = pd.read_excel(path).fillna("").to_dict(orient="records")
     elif formato in ("mdb", "accdb"):
+        if pyodbc is None:
+            raise HTTPException(400, "pyodbc no instalado. No se puede importar desde Access.")
         driver = os.getenv("ACCESS_ODBC_DRIVER", "Microsoft Access Driver (*.mdb, *.accdb)")
         cn = pyodbc.connect(f"DRIVER={{{driver}}};DBQ={path};")
         cur = cn.cursor()

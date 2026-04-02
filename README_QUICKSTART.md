@@ -4,7 +4,7 @@
 
 1) Instala:
 - Node.js 18+
-- Python 3.10+
+- Python 3.10+ (recomendado 3.11 para máxima compatibilidad de drivers)
 
 2) Doble click:
 - `start_windows.bat`
@@ -30,6 +30,7 @@ Si esos puertos están ocupados, cierra el proceso que los use.
 - `POST /data/import`: asistente backend para importar desde `excel`, `csv`, `txt`, `xml`, `json`, `mdb`, `accdb`.
 
 > Nota: para Access (`.mdb/.accdb`) necesitas un driver ODBC de Microsoft Access disponible en el sistema.
+> Nota: SQL Server y Access requieren `pyodbc` + ODBC Driver del sistema. En Python 3.13 puede requerir instalación manual adicional.
 
 ## App de prueba incluida (web)
 
