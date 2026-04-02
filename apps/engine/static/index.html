@@ -19,6 +19,7 @@
 
   <section class="ribbon">
     <button id="openConnWizard">🔌 Conexión</button>
+    <div id="connTypeMenu" class="conn-type-menu hidden"></div>
     <button data-tab="query">🧾 Nueva Consulta</button>
     <button data-tab="objects">🗂 Tabla</button>
     <button data-tab="dashboard">📊 Dashboard</button>
@@ -68,7 +69,7 @@
 
       <div id="tab-dashboard" class="tab-content">
         <div class="kpis" id="kpiCards"></div>
-        <pre id="dashboardRaw"></pre>
+        <div id="monitorBars" class="monitor-bars"></div>
       </div>
 
       <div id="tab-import" class="tab-content">
@@ -124,6 +125,8 @@
       <button class="ghost" data-close="dbTypeModal">Cancelar</button>
     </div>
   </div>
+
+  <div id="toast" class="toast"></div>
 
   <div id="connModal" class="modal hidden">
     <div class="modal-card large">

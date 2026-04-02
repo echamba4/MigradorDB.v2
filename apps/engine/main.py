@@ -338,6 +338,43 @@ def explorer_schemas(cfg: ConexionConfig):
     raise HTTPException(400, "Motor no soportado")
 
 
+@app.post("/explorer/databases")
+def explorer_databases(cfg: ConexionConfig):
+    m = cfg.motor.lower()
+    if m == "postgres":
+        with conn_postgres(cfg) as cn:
+            with cn.cursor() as cur:
+                cur.execute("SELECT datname FROM pg_database WHERE datistemplate=false ORDER BY datname")
+                return {"databases": [r[0] for r in cur.fetchall()]}
+    if m == "sqlserver":
+        cn = conn_sqlserver(cfg)
+        cur = cn.cursor()
+        cur.execute("SELECT name FROM sys.databases ORDER BY name")
+        rows = [r[0] for r in cur.fetchall()]
+        cn.close()
+        return {"databases": rows}
+    if m == "mysql":
+        cn = conn_mysql(cfg)
+        try:
+            with cn.cursor() as cur:
+                cur.execute("SHOW DATABASES")
+                rows = cur.fetchall()
+                dbs = [list(r.values())[0] if isinstance(r, dict) else r[0] for r in rows]
+                return {"databases": dbs}
+        finally:
+            cn.close()
+    if m == "mongodb":
+        client = conn_mongodb(cfg)
+        dbs = client.list_database_names()
+        client.close()
+        return {"databases": dbs}
+    if m == "sqlite":
+        return {"databases": [os.path.basename(cfg.host or cfg.database or "main")]}
+    if m == "oracle":
+        return {"databases": [cfg.database]}
+    raise HTTPException(400, "Motor no soportado")
+
+
 @app.post("/explorer/objects")
 def explorer_objects(payload: Dict[str, Any]):
     """Devuelve tablas/vistas/funciones/índices/FKs para un esquema.
@@ -872,6 +909,83 @@ def explorer_columns(payload: Dict[str, Any]):
         }
 
     raise HTTPException(400, "Motor no soportado")
+
+
+@app.post("/explorer/table-details")
+def explorer_table_details(payload: Dict[str, Any]):
+    cfg = ConexionConfig(**payload.get("conexion", {}))
+    schema = payload.get("schema") or ("dbo" if cfg.motor.lower() == "sqlserver" else "public")
+    table = payload.get("table")
+    if not table:
+        raise HTTPException(400, "table es requerido")
+
+    m = cfg.motor.lower()
+
+    if m == "postgres":
+        with conn_postgres(cfg) as cn:
+            with cn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema=%s AND table_name=%s ORDER BY ordinal_position
+                    """,
+                    (schema, table),
+                )
+                cols = [r[0] for r in cur.fetchall()]
+
+                cur.execute(
+                    """
+                    SELECT indexname FROM pg_indexes
+                    WHERE schemaname=%s AND tablename=%s ORDER BY indexname
+                    """,
+                    (schema, table),
+                )
+                idx = [r[0] for r in cur.fetchall()]
+
+                cur.execute(
+                    """
+                    SELECT tc.constraint_name
+                    FROM information_schema.table_constraints tc
+                    WHERE tc.table_schema=%s AND tc.table_name=%s AND tc.constraint_type='FOREIGN KEY'
+                    ORDER BY tc.constraint_name
+                    """,
+                    (schema, table),
+                )
+                fks = [r[0] for r in cur.fetchall()]
+
+                cur.execute(
+                    """
+                    SELECT conname
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid=c.conrelid
+                    JOIN pg_namespace n ON n.oid=t.relnamespace
+                    WHERE n.nspname=%s AND t.relname=%s AND c.contype='c'
+                    ORDER BY conname
+                    """,
+                    (schema, table),
+                )
+                checks = [r[0] for r in cur.fetchall()]
+
+                cur.execute(
+                    """
+                    SELECT tgname FROM pg_trigger tg
+                    JOIN pg_class t ON t.oid=tg.tgrelid
+                    JOIN pg_namespace n ON n.oid=t.relnamespace
+                    WHERE n.nspname=%s AND t.relname=%s AND NOT tg.tgisinternal
+                    ORDER BY tgname
+                    """,
+                    (schema, table),
+                )
+                triggers = [r[0] for r in cur.fetchall()]
+        return {"columns": cols, "indexes": idx, "foreign_keys": fks, "constraints": checks, "triggers": triggers}
+
+    # fallback simple para otros motores
+    try:
+        cols_data = explorer_columns({"conexion": cfg.model_dump(), "schema": schema, "table": table})
+        cols = [c.get("name") for c in cols_data.get("columns", [])]
+    except Exception:
+        cols = []
+    return {"columns": cols, "indexes": [], "foreign_keys": [], "constraints": [], "triggers": []}
 
 
 # -----------------------------

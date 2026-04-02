@@ -17,6 +17,10 @@ body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: var(-
 .ribbon { height: 58px; background: #3a3f46; gap: 8px; }
 .ribbon button { border: 1px solid transparent; background: transparent; color: #eef2f8; border-radius: 6px; padding: 9px 12px; }
 .ribbon button:hover { background: #4a515b; border-color: #656d78; cursor: pointer; }
+.conn-type-menu { position: absolute; top: 118px; left: 12px; width: 220px; background: #2a2f36; border: 1px solid #59606c; z-index: 40; box-shadow: 0 8px 22px rgba(0,0,0,.45); }
+.conn-type-menu.hidden { display: none; }
+.menu-item { width: 100%; text-align: left; border-radius: 0; background: transparent; border: none; border-bottom: 1px solid #3e4550; padding: 8px 10px; }
+.menu-item:hover { background: #3a4350; }
 
 .workspace { display: grid; grid-template-columns: 320px 1fr 260px; height: calc(100vh - 124px); }
 .panel { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; }
@@ -56,6 +60,10 @@ pre { background: #131821; border: 1px solid #39414d; border-radius: 8px; paddin
 .kpi { border: 1px solid var(--line); background: #222933; border-radius: 8px; padding: 10px; }
 .kpi h4 { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
 .kpi strong { font-size: 22px; }
+.monitor-bars { padding: 10px; display: grid; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 160px 1fr 70px; gap: 8px; align-items: center; }
+.bar-bg { background: #161d26; border: 1px solid #39414d; border-radius: 6px; height: 18px; overflow: hidden; }
+.bar-fill { background: linear-gradient(90deg, #3a82ff, #5cb0ff); height: 100%; }
 
 .profile { padding: 12px; }
 .profile p { margin: 6px 0; }
@@ -70,6 +78,10 @@ pre { background: #131821; border: 1px solid #39414d; border-radius: 8px; paddin
 .modal-tabs .active { border-color: #6f7886; background: #303743; }
 .db-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
 .db-item { background: #212731; border: 1px solid #4b5563; }
+.toast { position: fixed; right: 16px; bottom: 16px; background: #1f2631; border: 1px solid #4d5766; border-radius: 8px; padding: 10px 14px; opacity: 0; transform: translateY(10px); transition: .2s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.ok { border-color: #2f8f54; }
+.toast.err { border-color: #b34545; }
 
 @media (max-width: 1300px) {
   .workspace { grid-template-columns: 280px 1fr; }
