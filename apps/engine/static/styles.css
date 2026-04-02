@@ -60,6 +60,9 @@ pre { background: #131821; border: 1px solid #39414d; border-radius: 8px; paddin
 .kpi { border: 1px solid var(--line); background: #222933; border-radius: 8px; padding: 10px; }
 .kpi h4 { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
 .kpi strong { font-size: 22px; }
+.realtime-panels { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 0 10px 10px; }
+.rt-card { border: 1px solid var(--line); border-radius: 8px; background: #1d232c; padding: 10px; }
+.rt-card h4 { margin: 0 0 8px; color: #b5c0d0; }
 .monitor-bars { padding: 10px; display: grid; gap: 8px; }
 .bar-row { display: grid; grid-template-columns: 160px 1fr 70px; gap: 8px; align-items: center; }
 .bar-bg { background: #161d26; border: 1px solid #39414d; border-radius: 6px; height: 18px; overflow: hidden; }
@@ -82,6 +85,9 @@ pre { background: #131821; border: 1px solid #39414d; border-radius: 8px; paddin
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast.ok { border-color: #2f8f54; }
 .toast.err { border-color: #b34545; }
+.mini-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); z-index: 65; }
+.mini-modal.hidden { display: none; }
+.mini-card { min-width: 330px; background: #222a34; border: 1px solid #4f5a6a; border-radius: 10px; padding: 14px; text-align: center; box-shadow: 0 8px 26px rgba(0,0,0,.4); }
 
 @media (max-width: 1300px) {
   .workspace { grid-template-columns: 280px 1fr; }

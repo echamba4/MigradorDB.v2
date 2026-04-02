@@ -69,6 +69,16 @@
 
       <div id="tab-dashboard" class="tab-content">
         <div class="kpis" id="kpiCards"></div>
+        <div class="realtime-panels">
+          <div class="rt-card">
+            <h4>Tamaño BD en tiempo real (MB)</h4>
+            <canvas id="sizeChart" width="680" height="170"></canvas>
+          </div>
+          <div class="rt-card">
+            <h4>Sesiones activas en tiempo real</h4>
+            <canvas id="sessionChart" width="680" height="170"></canvas>
+          </div>
+        </div>
         <div id="monitorBars" class="monitor-bars"></div>
       </div>
 
@@ -127,6 +137,12 @@
   </div>
 
   <div id="toast" class="toast"></div>
+  <div id="miniModal" class="mini-modal hidden">
+    <div class="mini-card">
+      <strong id="miniModalTitle">Conexión Exitosa</strong>
+      <p id="miniModalMsg">La conexión fue validada correctamente.</p>
+    </div>
+  </div>
 
   <div id="connModal" class="modal hidden">
     <div class="modal-card large">

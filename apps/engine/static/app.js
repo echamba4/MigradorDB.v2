@@ -7,7 +7,7 @@ const DB_TYPES = [
   { key: 'oracle', label: 'Oracle', port: 1521, db: 'xe', user: 'system', icon: '🟥' },
 ];
 
-const state = { connections: [], selected: -1, activeTab: 'query', treeMeta: {}, dashboardTimer: null };
+const state = { connections: [], selected: -1, activeTab: 'query', treeMeta: {}, dashboardTimer: null, metricsHistory: [] };
 const $ = (id) => document.getElementById(id);
 const selectedConn = () => (state.selected >= 0 ? state.connections[state.selected] : null);
 
@@ -27,6 +27,13 @@ function showToast(msg, ok = true) {
   el.textContent = msg;
   el.className = `toast show ${ok ? 'ok' : 'err'}`;
   setTimeout(() => { el.className = 'toast'; }, 2200);
+}
+
+function showMiniModal(title, msg, autoCloseMs = 1800) {
+  $('miniModalTitle').textContent = title;
+  $('miniModalMsg').textContent = msg;
+  $('miniModal').classList.remove('hidden');
+  setTimeout(() => $('miniModal').classList.add('hidden'), autoCloseMs);
 }
 
 function switchTab(tab) {
@@ -71,7 +78,13 @@ async function loadMetaForConnection(index) {
   const c = state.connections[index];
   if (!c) return;
   try {
-    const dbs = await api('/explorer/databases', connPayload(c));
+    let dbs = { databases: [c.database] };
+    try {
+      dbs = await api('/explorer/databases', connPayload(c));
+    } catch (eDb) {
+      // fallback para engines viejos sin endpoint /explorer/databases
+      dbs = { databases: [c.database] };
+    }
     const schemas = await api('/explorer/schemas', connPayload(c));
     const schemaList = schemas.schemas || ['public'];
     const objectsBySchema = {};
@@ -235,6 +248,34 @@ function renderChart(data) {
   el.innerHTML = data.map((d) => `<div class='bar-row'><span>${d.label}</span><div class='bar-bg'><div class='bar-fill' style='width:${Math.max(5, (d.value / max) * 100)}%'></div></div><b>${d.value}</b></div>`).join('');
 }
 
+function drawLineChart(canvasId, values, color = '#58a6ff') {
+  const canvas = $(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#141b24';
+  ctx.fillRect(0, 0, w, h);
+  if (!values.length) return;
+  const max = Math.max(1, ...values);
+  const min = Math.min(...values);
+  const range = Math.max(1, max - min);
+  ctx.strokeStyle = '#2b3748';
+  for (let i = 0; i < 5; i++) {
+    const y = (h - 10) * (i / 4) + 5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = (i / Math.max(1, values.length - 1)) * (w - 20) + 10;
+    const y = h - 10 - ((v - min) / range) * (h - 20);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
 async function loadDashboard() {
   if (!state.connections.length) { $('kpiCards').innerHTML = ''; $('monitorBars').innerHTML = ''; return; }
   try {
@@ -242,6 +283,14 @@ async function loadDashboard() {
     const t = data.totals || {};
     $('kpiCards').innerHTML = [['Conexiones', t.connections || 0], ['Tablas', t.tables || 0], ['Vistas', t.views || 0], ['Sesiones', t.active_sessions || 0], ['Errores', t.with_errors || 0], ['Tamaño(MB)', Math.round((t.size_bytes || 0) / 1024 / 1024)]].map(([k, v]) => `<article class='kpi'><h4>${k}</h4><strong>${v}</strong></article>`).join('');
     renderChart((data.databases || []).filter((d) => !d.error).slice(0, 8).map((d) => ({ label: d.db || '-', value: Math.round((d.size_bytes || 0) / 1024 / 1024) })));
+    state.metricsHistory.push({
+      sizeMb: Math.round((t.size_bytes || 0) / 1024 / 1024),
+      sessions: Number(t.active_sessions || 0),
+      ts: Date.now(),
+    });
+    state.metricsHistory = state.metricsHistory.slice(-30);
+    drawLineChart('sizeChart', state.metricsHistory.map((x) => x.sizeMb), '#4ea3ff');
+    drawLineChart('sessionChart', state.metricsHistory.map((x) => x.sessions), '#61d18a');
   } catch (e) {
     $('kpiCards').innerHTML = `<article class='kpi'><h4>Error</h4><strong>${e.message}</strong></article>`;
   }
@@ -249,6 +298,7 @@ async function loadDashboard() {
 
 $('openConnWizard').onclick = openConnMenu;
 document.querySelectorAll('[data-close]').forEach((btn) => btn.onclick = () => closeModal(btn.dataset.close));
+$('miniModal').onclick = () => $('miniModal').classList.add('hidden');
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#openConnWizard') && !e.target.closest('#connTypeMenu')) $('connTypeMenu').classList.add('hidden');
@@ -259,7 +309,7 @@ $('testConnBtn').onclick = async () => {
   const c = Object.fromEntries(f.entries()); c.ssl = !!f.get('ssl'); c.port = Number(c.port || 0);
   try {
     await api('/connection/test', connPayload(c));
-    showToast('Conexión Exitosa', true);
+    showMiniModal('Conexión Exitosa', 'La conexión se probó correctamente.');
     closeModal('connModal');
   } catch (e) { showToast(`Error: ${e.message}`, false); }
 };
