@@ -39,6 +39,12 @@ call venv\Scripts\activate
 echo [3/6] Instalando dependencias Python (Engine)...
 pip install --upgrade pip >nul
 pip install -r requirements.txt
+echo [3.1/6] Intentando instalar pyodbc (opcional para SQL Server/Access)...
+pip install pyodbc >nul 2>nul
+if errorlevel 1 (
+  echo [WARN] pyodbc no se pudo instalar automaticamente.
+  echo        Si usaras SQL Server/Access, instala ODBC Driver + Build Tools y luego: pip install pyodbc
+)
 
 deactivate
 

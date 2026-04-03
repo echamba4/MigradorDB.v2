@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NexoraDB Studio</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="titlebar">
+    <div class="brand">🟡 NexoraDB Studio</div>
+    <div class="window-actions">— □ ✕</div>
+  </header>
+
+  <nav class="menubar">
+    <span>Archivo</span><span>Editar</span><span>Ver</span><span>Consulta</span><span>Formato</span>
+    <span>Favoritos</span><span>Herramientas</span><span>Ventanas</span><span>Ayuda</span>
+  </nav>
+
+  <section class="ribbon">
+    <button id="openConnWizard">🔌 Conexión</button>
+    <div id="connTypeMenu" class="conn-type-menu hidden"></div>
+    <button data-tab="query">🧾 Nueva Consulta</button>
+    <button data-tab="objects">🗂 Tabla</button>
+    <button data-tab="dashboard">📊 Dashboard</button>
+    <button data-tab="import">📥 Importación</button>
+    <button data-tab="export">📤 Exportación</button>
+    <button data-tab="backup">🛡 Backup</button>
+  </section>
+
+  <main class="workspace">
+    <aside class="panel left">
+      <div class="panel-title">Conexiones (árbol)</div>
+      <div id="connTree" class="tree"></div>
+    </aside>
+
+    <section class="panel center">
+      <div class="panel-title" id="centerTitle">Nueva Consulta</div>
+
+      <div id="tab-query" class="tab-content active">
+        <div class="toolbar-row">
+          <button id="runQuery">▶ Ejecutar</button>
+          <button id="explainQuery">ℹ Explicar</button>
+          <span id="queryConnLabel" class="muted">Sin conexión seleccionada</span>
+        </div>
+        <textarea id="sqlEditor" class="sql-editor" spellcheck="false">select 1 as ok;</textarea>
+        <div class="result-tabs">Resultado</div>
+        <div class="result-table-wrap">
+          <table class="grid-table">
+            <thead id="queryHead"></thead>
+            <tbody id="queryBody"></tbody>
+          </table>
+        </div>
+        <pre id="queryMeta"></pre>
+      </div>
+
+      <div id="tab-objects" class="tab-content">
+        <div class="toolbar-row">
+          <select id="schemaSelect"></select>
+          <button id="refreshObjects">Actualizar objetos</button>
+        </div>
+        <table class="grid-table">
+          <thead>
+            <tr><th>Nombre</th><th>Tipo</th><th>Detalle</th></tr>
+          </thead>
+          <tbody id="objectsBody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-dashboard" class="tab-content">
+        <div class="kpis" id="kpiCards"></div>
+        <div class="realtime-panels">
+          <div class="rt-card">
+            <h4>Tamaño BD en tiempo real (MB)</h4>
+            <canvas id="sizeChart" width="680" height="170"></canvas>
+          </div>
+          <div class="rt-card">
+            <h4>Sesiones activas en tiempo real</h4>
+            <canvas id="sessionChart" width="680" height="170"></canvas>
+          </div>
+        </div>
+        <div id="monitorBars" class="monitor-bars"></div>
+      </div>
+
+      <div id="tab-import" class="tab-content">
+        <form id="importForm" class="form">
+          <input name="schema" placeholder="Schema" value="public" />
+          <input name="table" placeholder="Tabla destino" required />
+          <select name="format">
+            <option>excel</option><option>csv</option><option>txt</option>
+            <option>xml</option><option>json</option><option>mdb</option><option>accdb</option>
+          </select>
+          <input name="input" placeholder="Ruta input" required />
+          <button>Importar</button>
+        </form>
+        <pre id="importResult"></pre>
+      </div>
+
+      <div id="tab-export" class="tab-content">
+        <form id="exportForm" class="form">
+          <input name="schema" placeholder="Schema" value="public" />
+          <input name="table" placeholder="Tabla / Colección" required />
+          <select name="format">
+            <option>excel</option><option>csv</option><option>txt</option>
+            <option>xml</option><option>json</option><option>mdb</option><option>accdb</option><option>sql</option>
+          </select>
+          <input name="output" placeholder="Ruta output" required />
+          <input name="where" placeholder="WHERE opcional (sin WHERE)" />
+          <button>Exportar</button>
+        </form>
+        <pre id="exportResult"></pre>
+      </div>
+
+      <div id="tab-backup" class="tab-content">
+        <form id="backupForm" class="form">
+          <input name="output" placeholder="Ruta backup" required />
+          <select name="mode"><option>completo</option><option>estructura</option><option>datos</option></select>
+          <button>Crear backup</button>
+        </form>
+        <pre id="backupResult"></pre>
+      </div>
+    </section>
+
+    <aside class="panel right">
+      <div class="panel-title">Perfil activo</div>
+      <div id="profileCard" class="profile muted">Sin conexión seleccionada.</div>
+    </aside>
+  </main>
+
+  <div id="dbTypeModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Nueva conexión</h3>
+      <p>Selecciona el tipo de base de datos:</p>
+      <div class="db-grid" id="dbTypeGrid"></div>
+      <button class="ghost" data-close="dbTypeModal">Cancelar</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <div id="miniModal" class="mini-modal hidden">
+    <div class="mini-card">
+      <strong id="miniModalTitle">Conexión Exitosa</strong>
+      <p id="miniModalMsg">La conexión fue validada correctamente.</p>
+    </div>
+  </div>
+
+  <div id="connModal" class="modal hidden">
+    <div class="modal-card large">
+      <h3 id="connModalTitle">Nueva conexión</h3>
+      <div class="modal-tabs"><span class="active">General</span><span>Avanzado</span><span>SSL</span><span>SSH</span></div>
+      <form id="connForm" class="form two-col">
+        <label>Nombre de conexión</label><input name="name" placeholder="Mi conexión" required />
+        <label>Host</label><input name="host" placeholder="localhost" required />
+        <label>Puerto</label><input name="port" type="number" placeholder="5432" />
+        <label>Base de datos</label><input name="database" placeholder="postgres" required />
+        <label>Usuario</label><input name="user" placeholder="postgres" />
+        <label>Password</label><input name="password" type="password" />
+        <label>SSL</label><label class="check"><input type="checkbox" name="ssl" /> Activar SSL</label>
+        <input type="hidden" name="motor" />
+        <div class="modal-actions">
+          <button type="button" id="testConnBtn" class="ghost">Prueba de conexión</button>
+          <button type="submit">Aceptar</button>
+          <button type="button" class="ghost" data-close="connModal">Cancelar</button>
+        </div>
+      </form>
+      <pre id="connTestResult"></pre>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
