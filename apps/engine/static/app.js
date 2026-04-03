@@ -91,13 +91,7 @@ async function loadMetaForConnection(index) {
   const c = state.connections[index];
   if (!c) return;
   try {
-    let dbs = { databases: [c.database] };
-    try {
-      dbs = await api('/explorer/databases', connPayload(c));
-    } catch (eDb) {
-      // fallback para engines viejos sin endpoint /explorer/databases
-      dbs = { databases: [c.database] };
-    }
+    const dbs = { databases: [c.database] };
     const schemas = await api('/explorer/schemas', connPayload(c));
     const schemaList = schemas.schemas || ['public'];
     const objectsBySchema = {};
@@ -177,7 +171,8 @@ function renderTree() {
     state.selected = idx;
     renderProfile();
     updateQueryLabel();
-    renderTree();
+    root.querySelectorAll('.conn-summary').forEach((x) => x.classList.remove('active'));
+    if (el.classList.contains('conn-summary')) el.classList.add('active');
     if (el.dataset.table) {
       const schema = el.dataset.schema || 'public';
       const table = el.dataset.table;
